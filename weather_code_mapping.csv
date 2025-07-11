@@ -1,0 +1,23 @@
+code,description
+0,Clear sky
+1,Mainly clear
+2,Partly cloudy
+3,Overcast
+45,Fog
+48,Depositing rime fog
+51,"Drizzle, not freezing, light"
+53,"Drizzle, not freezing, moderate"
+55,"Drizzle, not freezing, heavy"
+56,"Drizzle, freezing, light"
+57,"Drizzle, freezing, moderate/heavy"
+61,"Rain, not freezing, light"
+63,"Rain, not freezing, moderate"
+65,"Rain, not freezing, heavy"
+66,"Freezing rain, light"
+67,"Freezing rain, moderate/heavy"
+80,"Showers, not freezing, light"
+81,"Showers, not freezing, moderate"
+82,"Showers, not freezing, heavy"
+95,"Thunderstorm, no hail"
+96,Thunderstorm with light hail
+99,Thunderstorm with heavy hail
