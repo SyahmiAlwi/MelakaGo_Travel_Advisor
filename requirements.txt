@@ -6,5 +6,4 @@ joblib
 requests
 matplotlib
 seaborn
-imbalanced-learn
-streamlit-geolocation 
+imbalanced-learn 

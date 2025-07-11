@@ -8,7 +8,6 @@ import joblib
 import requests
 from datetime import datetime, date
 import time
-from streamlit_geolocation import streamlit_geolocation  # <-- New Import
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -52,151 +51,138 @@ def get_theme_css(dark_mode=False):
         button_text = "#1a202c"
     return f"""
 <style>
-:root {{
-    --malacca-blue: #1e40af;
-    --malacca-red: #dc2626;
-    --malacca-yellow: #fbbf24;
-    --malacca-white: #ffffff;
-    --malacca-light-blue: #dbeafe;
-    --malacca-light-red: #fee2e2;
-    --malacca-light-yellow: #fef3c7;
-    --bg-primary: {bg_primary};
-    --bg-secondary: {bg_secondary};
-    --text-primary: {text_primary};
-    --text-secondary: {text_secondary};
-    --card-bg: {card_bg};
-    --border-color: {border_color};
-    --sidebar-bg: {sidebar_bg};
-    --sidebar-text: {sidebar_text};
-    --input-bg: {input_bg};
-    --input-text: {input_text};
-    --button-bg: {button_bg};
-    --button-text: {button_text};
-}}
-body, .stApp {{
-    background: var(--bg-primary) !important;
-    color: var(--text-primary) !important;
-    font-family: 'Inter', sans-serif;
-}}
-.stSidebar, .css-1d391kg, .css-1cypcdb, .css-17eq0hr, .css-1lcbmhc, .css-1wivap2 {{
-    background: var(--sidebar-bg) !important;
-    color: var(--sidebar-text) !important;
-}}
-.main-header {{
-    text-align: center;
-    padding: 2.5rem 0;
-    background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 100%);
-    border-radius: 18px;
-    margin-bottom: 2rem;
-    color: white;
-    box-shadow: 0 8px 32px rgba(30, 64, 175, 0.10);
-    border: none;
-}}
-.main-title {{
-    font-size: 3rem;
-    font-weight: 800;
-    margin-bottom: 0.5rem;
-    text-shadow: 2px 2px 8px rgba(0,0,0,0.10);
-    color: var(--malacca-white);
-}}
-.main-subtitle {{
-    font-size: 1.2rem;
-    font-weight: 400;
-    opacity: 0.95;
-    color: var(--malacca-light-yellow);
-}}
-.digital-clock {{
-    background: linear-gradient(135deg, var(--malacca-blue), var(--malacca-red));
-    color: white;
-    padding: 1.2rem 1.5rem;
-    border-radius: 18px;
-    text-align: center;
-    margin-bottom: 2rem;
-    box-shadow: 0 4px 24px rgba(30, 64, 175, 0.10);
-    border: 3px solid var(--malacca-yellow);
-}}
-.clock-time {{
-    font-size: 2.2rem;
-    font-weight: 700;
-    font-family: 'Courier New', monospace;
-    margin-bottom: 0.3rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.10);
-}}
-.clock-date {{
-    font-size: 1.1rem;
-    opacity: 0.95;
-    font-weight: 500;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.08);
-}}
-.metric-card {{
-    background: var(--card-bg);
-    padding: 2rem 1.5rem;
-    border-radius: 18px;
-    box-shadow: 0 2px 16px rgba(30, 64, 175, 0.08);
-    border: none;
-    margin-bottom: 1.5rem;
-    color: var(--text-primary);
-    width: 100%;
-    min-width: 250px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-}}
-.metric-card:hover {{
-    box-shadow: 0 8px 32px rgba(30, 64, 175, 0.12);
-    transform: translateY(-2px);
-}}
-.advisory-header {{
-    background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 100%);
-    color: white;
-    padding: 2rem 1rem;
-    border-radius: 18px;
-    margin: 2rem 0;
-    text-align: center;
-    box-shadow: 0 4px 24px rgba(30, 64, 175, 0.10);
-    border: none;
-}}
-.recommendation-card, .data-source, .selected-time, .footer, .metric-container {{
-    background: var(--card-bg);
-    padding: 1.2rem 1.5rem;
-    border-radius: 14px;
-    box-shadow: 0 2px 12px rgba(30, 64, 175, 0.06);
-    border: none;
-    color: var(--text-primary);
-    margin: 1rem 0;
-}}
-.footer {{
-    margin-top: 2rem;
-    text-align: center;
-}}
-.stButton > button {{
-    background-color: var(--button-bg) !important;
-    color: var(--button-text) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    padding: 0.5rem 1.5rem !important;
-    box-shadow: 0 2px 8px rgba(30, 64, 175, 0.08) !important;
-    border: none !important;
-}}
-.stButton > button:hover {{
-    background-color: var(--malacca-blue) !important;
-    color: #fff !important;
-}}
-.stSlider > div > div > div > div {{
-    background-color: var(--malacca-blue) !important;
-}}
-.stDateInput > div > div > input {{
-    background-color: var(--input-bg) !important;
-    color: var(--input-text) !important;
-}}
-.metric-card * {
-    width: 100%;
-    box-sizing: border-box;
-}
-.metric-card h1, .metric-card h2, .metric-card h3 {
-    margin-top: 0;
-}
+    :root {{
+        --malacca-blue: #1e40af;
+        --malacca-red: #dc2626;
+        --malacca-yellow: #fbbf24;
+        --malacca-white: #ffffff;
+        --malacca-light-blue: #dbeafe;
+        --malacca-light-red: #fee2e2;
+        --malacca-light-yellow: #fef3c7;
+        --bg-primary: {bg_primary};
+        --bg-secondary: {bg_secondary};
+        --text-primary: {text_primary};
+        --text-secondary: {text_secondary};
+        --card-bg: {card_bg};
+        --border-color: {border_color};
+        --sidebar-bg: {sidebar_bg};
+        --sidebar-text: {sidebar_text};
+        --input-bg: {input_bg};
+        --input-text: {input_text};
+        --button-bg: {button_bg};
+        --button-text: {button_text};
+    }}
+    body, .stApp {{
+        background: var(--bg-primary) !important;
+        color: var(--text-primary) !important;
+        font-family: 'Inter', sans-serif;
+    }}
+    .stSidebar, .css-1d391kg, .css-1cypcdb, .css-17eq0hr, .css-1lcbmhc, .css-1wivap2 {{
+        background: var(--sidebar-bg) !important;
+        color: var(--sidebar-text) !important;
+    }}
+    .main-header {{
+        text-align: center;
+        padding: 2.5rem 0;
+        background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 100%);
+        border-radius: 18px;
+        margin-bottom: 2rem;
+        color: white;
+        box-shadow: 0 8px 32px rgba(30, 64, 175, 0.10);
+        border: none;
+    }}
+    .main-title {{
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 8px rgba(0,0,0,0.10);
+        color: var(--malacca-white);
+    }}
+    .main-subtitle {{
+        font-size: 1.2rem;
+        font-weight: 400;
+        opacity: 0.95;
+        color: var(--malacca-light-yellow);
+    }}
+    .digital-clock {{
+        background: linear-gradient(135deg, var(--malacca-blue), var(--malacca-red));
+        color: white;
+        padding: 1.2rem 1.5rem;
+        border-radius: 18px;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 24px rgba(30, 64, 175, 0.10);
+        border: 3px solid var(--malacca-yellow);
+    }}
+    .clock-time {{
+        font-size: 2.2rem;
+        font-weight: 700;
+        font-family: 'Courier New', monospace;
+        margin-bottom: 0.3rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.10);
+    }}
+    .clock-date {{
+        font-size: 1.1rem;
+        opacity: 0.95;
+        font-weight: 500;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.08);
+    }}
+    .metric-card {{
+        background: var(--card-bg);
+        padding: 2rem 1.5rem;
+        border-radius: 18px;
+        box-shadow: 0 2px 16px rgba(30, 64, 175, 0.08);
+        border: none;
+        margin-bottom: 1.5rem;
+        color: var(--text-primary);
+    }}
+    .metric-card:hover {{
+        box-shadow: 0 8px 32px rgba(30, 64, 175, 0.12);
+        transform: translateY(-2px);
+    }}
+    .advisory-header {{
+        background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 100%);
+        color: white;
+        padding: 2rem 1rem;
+        border-radius: 18px;
+        margin: 2rem 0;
+        text-align: center;
+        box-shadow: 0 4px 24px rgba(30, 64, 175, 0.10);
+        border: none;
+    }}
+    .recommendation-card, .data-source, .selected-time, .footer, .metric-container {{
+        background: var(--card-bg);
+        padding: 1.2rem 1.5rem;
+        border-radius: 14px;
+        box-shadow: 0 2px 12px rgba(30, 64, 175, 0.06);
+        border: none;
+        color: var(--text-primary);
+        margin: 1rem 0;
+    }}
+    .footer {{
+        margin-top: 2rem;
+        text-align: center;
+    }}
+    .stButton > button {{
+        background-color: var(--button-bg) !important;
+        color: var(--button-text) !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1.5rem !important;
+        box-shadow: 0 2px 8px rgba(30, 64, 175, 0.08) !important;
+        border: none !important;
+    }}
+    .stButton > button:hover {{
+        background-color: var(--malacca-blue) !important;
+        color: #fff !important;
+    }}
+    .stSlider > div > div > div > div {{
+        background-color: var(--malacca-blue) !important;
+    }}
+    .stDateInput > div > div > input {{
+        background-color: var(--input-bg) !important;
+        color: var(--input-text) !important;
+    }}
 </style>
 """
 
@@ -278,7 +264,7 @@ def display_digital_clock():
     for _ in range(1):  # Only run once per rerun, but user can call this in a loop if needed
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
-        current_date = now.strftime("%A, %d-%m-%Y")
+        current_date = now.strftime("%A, %B %d")
         clock_placeholder.markdown(f"""
         <div class="digital-clock">
             <div class="clock-time">🕐 {current_time}</div>
@@ -320,14 +306,9 @@ def main():
         st.markdown("### 🕐 Select Your Travel Time")
         st.markdown("*Plan your journey through historic Malacca*")
         
-        # --- NEW: GEOLOCATION COMPONENT ---
-        st.header("Get Your Location")
-        location = streamlit_geolocation()
-        lat = location.get('latitude', 2.19)
-        lon = location.get('longitude', 102.24)
-        st.write(f"Current Coordinates: {lat:.4f}, {lon:.4f}")
-        if 'latitude' not in location:
-            st.caption("Showing data for central Malacca. Click the map icon above to use your current location.")
+        # Malacca coordinates
+        MALACCA_LAT = 2.19
+        MALACCA_LON = 102.24
         
         # Date and time selection
         selected_date = st.date_input("📅 Date", date.today())
@@ -338,7 +319,7 @@ def main():
         <div class="selected-time">
             <strong>🎯 Selected Journey Time</strong><br>
             <div style="font-size: 1.1rem; margin-top: 0.5rem;">
-                {selected_date.strftime('%A, %d-%m-%Y')}<br>
+                {selected_date.strftime('%A, %B %d, %Y')}<br>
                 {selected_hour:02d}:00
             </div>
         </div>
@@ -349,14 +330,15 @@ def main():
     input_data_row = None
     data_source_info = ""
 
-    # --- Use dynamic coordinates for weather forecast ---
+    # Determine data source
     if selected_date >= date.today():
-        data_source_info = f"Fetching live forecast for your location..."
-        forecast_df = get_weather_forecast(lat, lon, selected_date.strftime('%Y-%m-%d'))
+        data_source_info = f"🔴 Live weather forecast for {selected_date.strftime('%Y-%m-%d')}"
+        forecast_df = get_weather_forecast(MALACCA_LAT, MALACCA_LON, selected_date.strftime('%Y-%m-%d'))
+        
         if forecast_df is not None:
             input_data_row = forecast_df[forecast_df['datetime'].dt.hour == selected_hour].iloc[0:1]
     else:
-        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%d-%m-%Y')}"
+        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%Y-%m-%d')}"
         input_data_row = df_historical[
             (df_historical['datetime'].dt.date == selected_date) & 
             (df_historical['datetime'].dt.hour == selected_hour)
@@ -406,12 +388,12 @@ def main():
     st.markdown(f"""
     <div class="advisory-header">
         <h2>🎯 Travel Advisory for Historic Malacca</h2>
-        <h3>{selected_date.strftime('%A, %d-%m-%Y')} at {selected_hour:02d}:00</h3>
+        <h3>{selected_date.strftime('%A, %d %B %Y')} at {selected_hour:02d}:00</h3>
     </div>
     """, unsafe_allow_html=True)
 
     # Main prediction cards
-    col1, col2, col3 = st.columns([1, 1, 1], gap="large")
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
