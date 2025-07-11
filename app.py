@@ -8,6 +8,7 @@ import joblib
 import requests
 from datetime import datetime, date
 import time
+from streamlit_geolocation import streamlit_geolocation  # <-- New Import
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -127,7 +128,7 @@ def get_theme_css(dark_mode=False):
         font-weight: 500;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.08);
     }}
-    .metric-card {{
+    .metric-card {
         background: var(--card-bg);
         padding: 2rem 1.5rem;
         border-radius: 18px;
@@ -135,7 +136,13 @@ def get_theme_css(dark_mode=False):
         border: none;
         margin-bottom: 1.5rem;
         color: var(--text-primary);
-    }}
+        width: 100%;
+        min-width: 250px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
     .metric-card:hover {{
         box-shadow: 0 8px 32px rgba(30, 64, 175, 0.12);
         transform: translateY(-2px);
@@ -264,7 +271,7 @@ def display_digital_clock():
     for _ in range(1):  # Only run once per rerun, but user can call this in a loop if needed
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
-        current_date = now.strftime("%A, %B %d")
+        current_date = now.strftime("%A, %d-%m-%Y")
         clock_placeholder.markdown(f"""
         <div class="digital-clock">
             <div class="clock-time">🕐 {current_time}</div>
@@ -306,9 +313,14 @@ def main():
         st.markdown("### 🕐 Select Your Travel Time")
         st.markdown("*Plan your journey through historic Malacca*")
         
-        # Malacca coordinates
-        MALACCA_LAT = 2.19
-        MALACCA_LON = 102.24
+        # --- NEW: GEOLOCATION COMPONENT ---
+        st.header("Get Your Location")
+        location = streamlit_geolocation()
+        lat = location.get('latitude', 2.19)
+        lon = location.get('longitude', 102.24)
+        st.write(f"Current Coordinates: {lat:.4f}, {lon:.4f}")
+        if 'latitude' not in location:
+            st.caption("Showing data for central Malacca. Click the map icon above to use your current location.")
         
         # Date and time selection
         selected_date = st.date_input("📅 Date", date.today())
@@ -319,7 +331,7 @@ def main():
         <div class="selected-time">
             <strong>🎯 Selected Journey Time</strong><br>
             <div style="font-size: 1.1rem; margin-top: 0.5rem;">
-                {selected_date.strftime('%A, %B %d, %Y')}<br>
+                {selected_date.strftime('%A, %d-%m-%Y')}<br>
                 {selected_hour:02d}:00
             </div>
         </div>
@@ -330,15 +342,14 @@ def main():
     input_data_row = None
     data_source_info = ""
 
-    # Determine data source
+    # --- Use dynamic coordinates for weather forecast ---
     if selected_date >= date.today():
-        data_source_info = f"🔴 Live weather forecast for {selected_date.strftime('%Y-%m-%d')}"
-        forecast_df = get_weather_forecast(MALACCA_LAT, MALACCA_LON, selected_date.strftime('%Y-%m-%d'))
-        
+        data_source_info = f"Fetching live forecast for your location..."
+        forecast_df = get_weather_forecast(lat, lon, selected_date.strftime('%Y-%m-%d'))
         if forecast_df is not None:
             input_data_row = forecast_df[forecast_df['datetime'].dt.hour == selected_hour].iloc[0:1]
     else:
-        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%Y-%m-%d')}"
+        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%d-%m-%Y')}"
         input_data_row = df_historical[
             (df_historical['datetime'].dt.date == selected_date) & 
             (df_historical['datetime'].dt.hour == selected_hour)
@@ -388,12 +399,12 @@ def main():
     st.markdown(f"""
     <div class="advisory-header">
         <h2>🎯 Travel Advisory for Historic Malacca</h2>
-        <h3>{selected_date.strftime('%A, %d %B %Y')} at {selected_hour:02d}:00</h3>
+        <h3>{selected_date.strftime('%A, %d-%m-%Y')} at {selected_hour:02d}:00</h3>
     </div>
     """, unsafe_allow_html=True)
 
     # Main prediction cards
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns([1, 1, 1], gap="large")
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
