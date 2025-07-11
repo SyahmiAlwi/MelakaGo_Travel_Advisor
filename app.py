@@ -190,6 +190,13 @@ body, .stApp {{
     background-color: var(--input-bg) !important;
     color: var(--input-text) !important;
 }}
+.metric-card * {
+    width: 100%;
+    box-sizing: border-box;
+}
+.metric-card h1, .metric-card h2, .metric-card h3 {
+    margin-top: 0;
+}
 </style>
 """
 
