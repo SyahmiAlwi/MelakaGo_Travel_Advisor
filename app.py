@@ -264,7 +264,7 @@ def display_digital_clock():
     for _ in range(1):  # Only run once per rerun, but user can call this in a loop if needed
         now = datetime.now()
         current_time = now.strftime("%H:%M:%S")
-        current_date = now.strftime("%A, %B %d")
+        current_date = now.strftime("%d/%m/%Y")
         clock_placeholder.markdown(f"""
         <div class="digital-clock">
             <div class="clock-time">🕐 {current_time}</div>
@@ -312,18 +312,46 @@ def main():
         
         # Date and time selection
         selected_date = st.date_input("📅 Date", date.today())
-        selected_hour = st.slider("⏰ Hour (24-hour format)", 0, 23, current_hour)  # Default to current hour
         
-        # Show selected time with Malacca colors
+        # Better time picker with 12-hour format display
+        st.markdown("### ⏰ Select Travel Time")
+        
+        # Create time options with both 12-hour and 24-hour format
+        time_options = []
+        time_labels = []
+        for hour in range(24):
+            time_options.append(hour)
+            if hour == 0:
+                time_labels.append("12:00 AM (00:00)")
+            elif hour < 12:
+                time_labels.append(f"{hour}:00 AM ({hour:02d}:00)")
+            elif hour == 12:
+                time_labels.append("12:00 PM (12:00)")
+            else:
+                time_labels.append(f"{hour-12}:00 PM ({hour:02d}:00)")
+        
+        # Use selectbox for better time selection
+        selected_time_index = st.selectbox(
+            "Choose your travel time:",
+            options=range(len(time_options)),
+            index=current_hour,
+            format_func=lambda x: time_labels[x]
+        )
+        selected_hour = time_options[selected_time_index]
+        
+        # Show selected time with Malacca colors and DD/MM/YYYY format
         st.markdown(f"""
         <div class="selected-time">
             <strong>🎯 Selected Journey Time</strong><br>
             <div style="font-size: 1.1rem; margin-top: 0.5rem;">
-                {selected_date.strftime('%A, %B %d, %Y')}<br>
-                {selected_hour:02d}:00
+                {selected_date.strftime('%d/%m/%Y')}<br>
+                {time_labels[selected_time_index].split(' (')[0]}
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Display the selected date in DD/MM/YYYY format for clarity
+        st.info(f"📅 Selected Date: {selected_date.strftime('%d/%m/%Y')}")
 
     # Process input and get data
     user_selected_dt = datetime.combine(selected_date, datetime.min.time()).replace(hour=selected_hour)
@@ -332,13 +360,13 @@ def main():
 
     # Determine data source
     if selected_date >= date.today():
-        data_source_info = f"🔴 Live weather forecast for {selected_date.strftime('%Y-%m-%d')}"
+        data_source_info = f"🔴 Live weather forecast for {selected_date.strftime('%d/%m/%Y')}"
         forecast_df = get_weather_forecast(MALACCA_LAT, MALACCA_LON, selected_date.strftime('%Y-%m-%d'))
         
         if forecast_df is not None:
             input_data_row = forecast_df[forecast_df['datetime'].dt.hour == selected_hour].iloc[0:1]
     else:
-        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%Y-%m-%d')}"
+        data_source_info = f"📊 Historical weather data from {selected_date.strftime('%d/%m/%Y')}"
         input_data_row = df_historical[
             (df_historical['datetime'].dt.date == selected_date) & 
             (df_historical['datetime'].dt.hour == selected_hour)
@@ -360,7 +388,12 @@ def main():
     
     # Holiday data
     is_holiday = df_historical[df_historical['datetime'].dt.date == selected_date]
-    X_live['is_holiday_mlk'] = False if is_holiday.empty else is_holiday['is_holiday_mlk'].iloc[0]
+    X_live['is_holiday_mlk'] = False
+    if not is_holiday.empty and 'is_holiday_mlk' in is_holiday.columns:
+        try:
+            X_live['is_holiday_mlk'] = bool(is_holiday['is_holiday_mlk'].iloc[0])
+        except:
+            X_live['is_holiday_mlk'] = False
     
     # Weather data
     X_live['temperature_2m'] = input_data_row['temperature_2m'].values[0]
@@ -373,7 +406,7 @@ def main():
     X_live['hour_cos'] = np.cos(2 * np.pi * X_live['hour'] / 24)
     month_map = {'January':1, 'February':2, 'March':3, 'April':4, 'May':5, 'June':6, 
                  'July':7, 'August':8, 'September':9, 'October':10, 'November':11, 'December':12}
-    X_live['month_num'] = X_live['month'].map(month_map)
+    X_live['month_num'] = X_live['month'].apply(lambda x: month_map.get(x, 1))
     X_live['month_sin'] = np.sin(2 * np.pi * X_live['month_num'] / 12)
     X_live['month_cos'] = np.cos(2 * np.pi * X_live['month_num'] / 12)
     X_live = X_live.drop(['hour', 'month', 'month_num'], axis=1)
@@ -388,7 +421,7 @@ def main():
     st.markdown(f"""
     <div class="advisory-header">
         <h2>🎯 Travel Advisory for Historic Malacca</h2>
-        <h3>{selected_date.strftime('%A, %d %B %Y')} at {selected_hour:02d}:00</h3>
+        <h3>{selected_date.strftime('%d/%m/%Y')} at {selected_hour:02d}:00</h3>
     </div>
     """, unsafe_allow_html=True)
 
