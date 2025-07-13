@@ -6,4 +6,5 @@ joblib
 requests
 matplotlib
 seaborn
-imbalanced-learn 
+imbalanced-learn
+streamlit-lottie 

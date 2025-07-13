@@ -2,24 +2,45 @@
 # app.py - MelakaGo: Modern Streamlit Dashboard with Fixed Light Mode & Clock
 # ==============================================================================
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import joblib
 import requests
 from datetime import datetime, date
 import time
+import json
+import base64
+
+
+# --- CONSTANTS ---
+DEFAULT_MALACCA_LAT = 2.19
+DEFAULT_MALACCA_LON = 102.24
+WEATHER_API_TTL = 3600  # 1 hour cache
+RADAR_HEIGHT = 450
+CHART_HEIGHT = 400
+
+# Function to encode image to base64
+@st.cache_data
+def get_image_base64(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except FileNotFoundError:
+        return None
+
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="MelakaGo - Smart Travel Advisory",
+    page_title="MelakaGo",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Initialize theme in session state
+# Initialize theme in session state - default to dark mode
 if 'dark_mode' not in st.session_state:
-    st.session_state.dark_mode = False
+    st.session_state.dark_mode = True
 
 # --- DYNAMIC CSS BASED ON THEME ---
 def get_theme_css(dark_mode=False):
@@ -78,54 +99,155 @@ def get_theme_css(dark_mode=False):
         font-family: 'Inter', sans-serif;
     }}
     .stSidebar, .css-1d391kg, .css-1cypcdb, .css-17eq0hr, .css-1lcbmhc, .css-1wivap2 {{
-        background: var(--sidebar-bg) !important;
+        background: transparent !important;
         color: var(--sidebar-text) !important;
+    }}
+    
+    /* Make sidebar content container transparent with subtle backdrop */
+    .stSidebar > div:first-child {{
+        background: rgba(255, 255, 255, 0.05) !important;
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin: 1rem;
+        padding: 1rem;
     }}
     .main-header {{
         text-align: center;
-        padding: 2.5rem 0;
-        background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 100%);
-        border-radius: 18px;
+        padding: 2rem 1.5rem;
+        background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+        border-radius: 20px;
         margin-bottom: 2rem;
         color: white;
-        box-shadow: 0 8px 32px rgba(30, 64, 175, 0.10);
-        border: none;
+        box-shadow: 0 10px 40px rgba(30, 64, 175, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }}
+    .main-header:hover {{
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 20px 60px rgba(30, 64, 175, 0.25);
+        background: linear-gradient(135deg, #1e40af 0%, #2563eb 30%, #3b82f6 60%, #60a5fa 100%);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }}
+    .main-header::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        pointer-events: none;
+        transition: all 0.4s ease;
+    }}
+    .main-header:hover::before {{
+        background: linear-gradient(45deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
     }}
     .main-title {{
-        font-size: 3rem;
-        font-weight: 800;
-        margin-bottom: 0.5rem;
-        text-shadow: 2px 2px 8px rgba(0,0,0,0.10);
-        color: var(--malacca-white);
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.8rem;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        color: #ffffff;
+        letter-spacing: -0.5px;
+        line-height: 1.1;
+        transition: all 0.3s ease;
+    }}
+    .main-header:hover .main-title {{
+        transform: scale(1.05);
+        text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        letter-spacing: 0px;
     }}
     .main-subtitle {{
-        font-size: 1.2rem;
-        font-weight: 400;
-        opacity: 0.95;
-        color: var(--malacca-light-yellow);
+        font-size: 1.1rem;
+        font-weight: 500;
+        opacity: 0.9;
+        color: #e0f2fe;
+        margin-top: 0.5rem;
+        letter-spacing: 0.3px;
+        transition: all 0.3s ease;
     }}
-    .digital-clock {{
+    .main-header:hover .main-subtitle {{
+        opacity: 1;
+        transform: translateY(-2px);
+        color: #ffffff;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }}
+    .analog-clock {{
         background: linear-gradient(135deg, var(--malacca-blue), var(--malacca-red));
-        color: white;
-        padding: 1.2rem 1.5rem;
+        padding: 1.5rem;
         border-radius: 18px;
         text-align: center;
         margin-bottom: 2rem;
         box-shadow: 0 4px 24px rgba(30, 64, 175, 0.10);
         border: 3px solid var(--malacca-yellow);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+    }}
+    .analog-clock:hover {{
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 12px 40px rgba(30, 64, 175, 0.2);
+        background: linear-gradient(135deg, #1e40af, #dc2626);
+        border: 3px solid #fbbf24;
+    }}
+    .clock-container {{
+        width: 100px;
+        height: 100px;
+        border: 3px solid white;
+        border-radius: 50%;
+        margin: 0 auto 1rem auto;
+        position: relative;
+        background: white;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }}
+    .clock-center {{
+        width: 8px;
+        height: 8px;
+        background: #dc2626;
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+    }}
+    .clock-hand {{
+        position: absolute;
+        background: #1f2937;
+        transform-origin: bottom center;
+        border-radius: 1px;
+    }}
+    .hour-hand {{
+        width: 3px;
+        height: 25px;
+        top: 25px;
+        left: 50%;
+        margin-left: -1.5px;
+        z-index: 2;
+    }}
+    .minute-hand {{
+        width: 2px;
+        height: 35px;
+        top: 15px;
+        left: 50%;
+        margin-left: -1px;
+        z-index: 3;
     }}
     .clock-time {{
-        font-size: 2.2rem;
-        font-weight: 700;
-        font-family: 'Courier New', monospace;
-        margin-bottom: 0.3rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.10);
+        color: white;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }}
     .clock-date {{
-        font-size: 1.1rem;
-        opacity: 0.95;
+        color: white;
+        font-size: 1rem;
         font-weight: 500;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.08);
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }}
     .metric-card {{
         background: var(--card-bg);
@@ -158,6 +280,13 @@ def get_theme_css(dark_mode=False):
         border: none;
         color: var(--text-primary);
         margin: 1rem 0;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+    }}
+    .recommendation-card:hover, .data-source:hover, .selected-time:hover, .metric-container:hover {{
+        transform: translateY(-3px) scale(1.01);
+        box-shadow: 0 8px 25px rgba(30, 64, 175, 0.12);
+        border: 1px solid rgba(30, 64, 175, 0.1);
     }}
     .footer {{
         margin-top: 2rem;
@@ -171,10 +300,13 @@ def get_theme_css(dark_mode=False):
         padding: 0.5rem 1.5rem !important;
         box-shadow: 0 2px 8px rgba(30, 64, 175, 0.08) !important;
         border: none !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }}
     .stButton > button:hover {{
         background-color: var(--malacca-blue) !important;
         color: #fff !important;
+        transform: translateY(-2px) scale(1.02) !important;
+        box-shadow: 0 8px 20px rgba(30, 64, 175, 0.2) !important;
     }}
     .stSlider > div > div > div > div {{
         background-color: var(--malacca-blue) !important;
@@ -203,8 +335,8 @@ def load_models_and_data():
 model_jam, model_peak, preprocessor, df_historical = load_models_and_data()
 
 # --- WEATHER API FUNCTION ---
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def get_weather_forecast(lat, lon, target_date):
+@st.cache_data(ttl=WEATHER_API_TTL, show_spinner=False)
+def get_weather_forecast(lat: float, lon: float, target_date: str):
     """Fetches hourly weather forecast for a specific date from the Open-Meteo API."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
@@ -232,6 +364,17 @@ def get_weather_forecast(lat, lon, target_date):
         return None
 
 # --- HELPER FUNCTIONS ---
+def safe_get_value(data_row, column, default_value=None):
+    """Safely get value from DataFrame with fallback."""
+    try:
+        if data_row is not None and not data_row.empty and column in data_row.columns:
+            values = data_row[column].values
+            if len(values) > 0:
+                return values[0]
+    except (IndexError, KeyError, AttributeError):
+        pass
+    return default_value
+
 def get_weather_icon_and_desc(weather_code):
     """Return weather icon and description based on weather code."""
     if weather_code >= 61:
@@ -256,59 +399,391 @@ def get_jam_status_style(is_jam):
     """Return CSS class for jam status."""
     return "status-danger" if is_jam else "status-good"
 
-# --- REAL-TIME CLOCK FUNCTION ---
-def display_digital_clock():
-    """Display a real-time digital clock using Streamlit's st.empty() for live updates."""
-    import time as _time
-    clock_placeholder = st.empty()
-    for _ in range(1):  # Only run once per rerun, but user can call this in a loop if needed
-        now = datetime.now()
-        current_time = now.strftime("%H:%M:%S")
-        current_date = now.strftime("%d/%m/%Y")
-        clock_placeholder.markdown(f"""
-        <div class="digital-clock">
-            <div class="clock-time">🕐 {current_time}</div>
-            <div class="clock-date">{current_date}</div>
+# --- ANALOG CLOCK DISPLAY ---
+
+def display_animated_background():
+    """Display animated background using CSS animations"""
+    st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        background-attachment: fixed;
+    }
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: 
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(220, 38, 38, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 40% 40%, rgba(251, 191, 36, 0.05) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: -1;
+        animation: backgroundPulse 10s ease-in-out infinite;
+    }
+    @keyframes backgroundPulse {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.6; }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+def display_analog_clock():
+    """Display analog clock emoji showing current time visually."""
+    now = datetime.now()
+    current_date = now.strftime("%d %B")
+    
+    # Create a simple clock emoji representation based on hour
+    hour = now.hour % 12
+    clock_emojis = {
+        0: "🕛", 1: "🕐", 2: "🕑", 3: "🕒", 4: "🕓", 5: "🕔",
+        6: "🕕", 7: "🕖", 8: "🕗", 9: "🕘", 10: "🕙", 11: "🕚"
+    }
+    clock_emoji = clock_emojis.get(hour, "🕐")
+    
+    # Use simple HTML that Streamlit can handle reliably
+    clock_html = f"""
+    <div style="
+        text-align: center;
+        margin-bottom: 2rem;
+    ">
+        <div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        ">
+            <span style="font-size: 2rem;">{clock_emoji}</span>
+            <span>{current_date}</span>
         </div>
-        """, unsafe_allow_html=True)
-        _time.sleep(1)
+    </div>
+    """
+    
+    st.markdown(clock_html, unsafe_allow_html=True)
 
 # --- MAIN APP ---
 def main():
     # Apply theme CSS
     st.markdown(get_theme_css(st.session_state.dark_mode), unsafe_allow_html=True)
     
-    # Theme Toggle Button
-    col1, col2, col3 = st.columns([6, 1, 1])
-    with col3:
-        theme_icon = "🌙" if not st.session_state.dark_mode else "☀️"
-        theme_text = "Dark" if not st.session_state.dark_mode else "Light"
-        if st.button(f"{theme_icon} {theme_text}", key="theme_toggle"):
-            st.session_state.dark_mode = not st.session_state.dark_mode
-            st.rerun()
-
-    # Header with Malacca Flag Colors
+    # Create beautiful animated CSS background
     st.markdown("""
-    <div class="main-header">
-        <div class="main-title">🏛️ MelakaGo</div>
-        <div class="main-subtitle">Smart Travel Advisory for Historic Malacca</div>
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* Animated gradient background */
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -999;
+        background: 
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.4) 0%, transparent 60%),
+            radial-gradient(circle at 80% 20%, rgba(220, 38, 38, 0.3) 0%, transparent 60%),
+            radial-gradient(circle at 40% 40%, rgba(251, 191, 36, 0.25) 0%, transparent 60%);
+        animation: backgroundPulse 1.5s ease-in-out infinite;
+    }
+    
+    /* Moving wave patterns */
+    .stApp::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 200%;
+        height: 200%;
+        z-index: -998;
+        background: 
+            linear-gradient(45deg, transparent 20%, rgba(59, 130, 246, 0.15) 40%, transparent 60%),
+            linear-gradient(-45deg, transparent 20%, rgba(220, 38, 38, 0.12) 40%, transparent 60%),
+            linear-gradient(90deg, transparent 30%, rgba(251, 191, 36, 0.1) 50%, transparent 70%);
+        animation: backgroundWave 2s linear infinite;
+    }
+    
+    @keyframes backgroundPulse {
+        0%, 100% { 
+            opacity: 0.6;
+            transform: scale(1) rotate(0deg);
+        }
+        33% { 
+            opacity: 0.9;
+            transform: scale(1.1) rotate(120deg);
+        }
+        66% { 
+            opacity: 0.7;
+            transform: scale(0.95) rotate(240deg);
+        }
+    }
+    
+    @keyframes backgroundWave {
+        0% { transform: translateX(-50%) translateY(-50%) rotate(0deg); }
+        100% { transform: translateX(-50%) translateY(-50%) rotate(360deg); }
+    }
+    
+    /* Floating animated elements */
+    .floating-elements {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -997;
+        pointer-events: none;
+    }
+    
+    .floating-circle {
+        position: absolute;
+        border-radius: 50%;
+        animation: float 2.5s ease-in-out infinite;
+    }
+    
+    .floating-circle:nth-child(1) {
+        width: 120px;
+        height: 120px;
+        top: 15%;
+        left: 10%;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.05) 70%, transparent 100%);
+        animation-delay: 0s;
+    }
+    
+    .floating-circle:nth-child(2) {
+        width: 80px;
+        height: 80px;
+        top: 60%;
+        left: 75%;
+        background: radial-gradient(circle, rgba(220, 38, 38, 0.18) 0%, rgba(220, 38, 38, 0.04) 70%, transparent 100%);
+        animation-delay: 0.5s;
+    }
+    
+    .floating-circle:nth-child(3) {
+        width: 150px;
+        height: 150px;
+        top: 75%;
+        left: 15%;
+        background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.03) 70%, transparent 100%);
+        animation-delay: 1s;
+    }
+    
+    .floating-circle:nth-child(4) {
+        width: 100px;
+        height: 100px;
+        top: 25%;
+        left: 70%;
+        background: radial-gradient(circle, rgba(16, 185, 129, 0.16) 0%, rgba(16, 185, 129, 0.04) 70%, transparent 100%);
+        animation-delay: 1.5s;
+    }
+    
+    .floating-circle:nth-child(5) {
+        width: 60px;
+        height: 60px;
+        top: 45%;
+        left: 35%;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.05) 70%, transparent 100%);
+        animation-delay: 2s;
+    }
+    
+    @keyframes float {
+        0%, 100% { 
+            transform: translateY(0px) translateX(0px) rotate(0deg) scale(1);
+            opacity: 0.6;
+        }
+        25% { 
+            transform: translateY(-30px) translateX(20px) rotate(90deg) scale(1.1);
+            opacity: 0.8;
+        }
+        50% { 
+            transform: translateY(-15px) translateX(-15px) rotate(180deg) scale(0.9);
+            opacity: 1;
+        }
+        75% { 
+            transform: translateY(25px) translateX(10px) rotate(270deg) scale(1.05);
+            opacity: 0.7;
+        }
+    }
+    
+    /* Particle effect */
+    .particle {
+        position: absolute;
+        width: 4px;
+        height: 4px;
+        background: rgba(59, 130, 246, 0.6);
+        border-radius: 50%;
+        animation: particle 4s linear infinite;
+    }
+    
+    .particle:nth-child(6) {
+        left: 10%;
+        animation-delay: 0s;
+        background: rgba(220, 38, 38, 0.5);
+    }
+    
+    .particle:nth-child(7) {
+        left: 30%;
+        animation-delay: 0.8s;
+        background: rgba(251, 191, 36, 0.6);
+    }
+    
+    .particle:nth-child(8) {
+        left: 50%;
+        animation-delay: 1.6s;
+        background: rgba(16, 185, 129, 0.5);
+    }
+    
+    .particle:nth-child(9) {
+        left: 70%;
+        animation-delay: 2.4s;
+        background: rgba(139, 92, 246, 0.6);
+    }
+    
+    .particle:nth-child(10) {
+        left: 90%;
+        animation-delay: 3.2s;
+        background: rgba(59, 130, 246, 0.4);
+    }
+    
+    @keyframes particle {
+        0% {
+            transform: translateY(100vh) scale(0);
+            opacity: 0;
+        }
+        10% {
+            opacity: 1;
+            transform: translateY(90vh) scale(1);
+        }
+        90% {
+            opacity: 1;
+            transform: translateY(10vh) scale(1);
+        }
+        100% {
+            transform: translateY(0) scale(0);
+            opacity: 0;
+        }
+    }
+    
+    /* Ensure all Streamlit content is above the background */
+    .stApp > div {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .main-content {
+        position: relative;
+        z-index: 100;
+    }
+    </style>
+    
+    <div class="floating-elements">
+        <div class="floating-circle"></div>
+        <div class="floating-circle"></div>
+        <div class="floating-circle"></div>
+        <div class="floating-circle"></div>
+        <div class="floating-circle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Main content container
+    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+    
+    # Initialize session state for info button
+    if 'show_info' not in st.session_state:
+        st.session_state.show_info = False
+    
+    # Main header with info button at top right
+    col_header, col_info = st.columns([10, 1])
+    
+    with col_header:
+        st.markdown(f"""
+        <div style="
+            display: flex;
+            justify-content: flex-start;
+            margin-bottom: 1.5rem;
+        ">
+            <div style="
+                background: linear-gradient(90deg, var(--malacca-blue) 0%, var(--malacca-red) 50%, var(--malacca-yellow) 100%);
+                padding: 0.8rem 1.5rem;
+                border-radius: 25px;
+                box-shadow: 0 4px 12px rgba(30, 64, 175, 0.1);
+                transition: all 0.3s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 0.8rem;
+                color: white;
+            ">
+                <img src="data:image/png;base64,{get_image_base64('Picture4.png') or ''}" style="width: 24px; height: 24px; object-fit: contain;" alt="MelakaGo Logo">
+                <div>
+                    <span style="font-size: 1.3rem; font-weight: 700; margin-right: 0.4rem;">MelakaGo</span>
+                    <span style="font-size: 0.85rem; opacity: 0.9; font-weight: 500;">Smart Travel Advisory</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_info:
+        st.markdown('<div style="margin-top: 0.5rem;">', unsafe_allow_html=True)
+        if st.button("ℹ️", key="info_button", help="Click to see prediction explanations"):
+            st.session_state.show_info = not st.session_state.show_info
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Get current hour for default value
     current_hour = datetime.now().hour
 
     # Sidebar for inputs
     with st.sidebar:
-        # Real-time Digital Clock
-        display_digital_clock()
+        # Analog Clock
+        display_analog_clock()
+        
+
+        
+        # --- LOCATION INPUT ---
+        melaka_locations = {
+            "Ayer Keroh": (2.2760, 102.2921),
+            "Bandar Hilir": (2.1935, 102.2496),
+            "Bukit Katil": (2.2234, 102.2915),
+            "Alor Gajah": (2.3817, 102.2089),
+            "Jasin": (2.3084, 102.4381),
+            "Melaka Tengah": (2.2008, 102.2487),
+        }
+        selected_location_name = st.selectbox("📍 Choose your location:", list(melaka_locations.keys()))
+        MALACCA_LAT, MALACCA_LON = melaka_locations[selected_location_name]
+        
+        st.markdown(f"""
+        <div style="
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        ">
+            <span style="font-size: 1.2rem;">📍</span>
+            <div>
+                <span style="color: #059669; font-weight: 500; font-size: 0.9rem;">You are viewing:</span>
+                <div style="color: var(--text-primary); font-weight: 600; font-size: 1rem; margin-top: 0.2rem;">{selected_location_name}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("### 🕐 Select Your Travel Time")
-        st.markdown("*Plan your journey through historic Malacca*")
-        
-        # Malacca coordinates
-        MALACCA_LAT = 2.19
-        MALACCA_LON = 102.24
         
         # Date and time selection
         selected_date = st.date_input("📅 Date", date.today())
@@ -332,7 +807,7 @@ def main():
         
         # Use selectbox for better time selection
         selected_time_index = st.selectbox(
-            "Choose your travel time:",
+            "",
             options=range(len(time_options)),
             index=current_hour,
             format_func=lambda x: time_labels[x]
@@ -350,30 +825,46 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        # Display the selected date in DD/MM/YYYY format for clarity
-        st.info(f"📅 Selected Date: {selected_date.strftime('%d/%m/%Y')}")
+
 
     # Process input and get data
     user_selected_dt = datetime.combine(selected_date, datetime.min.time()).replace(hour=selected_hour)
     input_data_row = None
     data_source_info = ""
 
-    # Determine data source
+    # Determine data source with failover
     if selected_date >= date.today():
         data_source_info = f"🔴 Live weather forecast for {selected_date.strftime('%d/%m/%Y')}"
         forecast_df = get_weather_forecast(MALACCA_LAT, MALACCA_LON, selected_date.strftime('%Y-%m-%d'))
         
-        if forecast_df is not None:
-            input_data_row = forecast_df[forecast_df['datetime'].dt.hour == selected_hour].iloc[0:1]
+        if forecast_df is not None and not forecast_df.empty:
+            hourly_data = forecast_df[forecast_df['datetime'].dt.hour == selected_hour]
+            if not hourly_data.empty:
+                input_data_row = hourly_data.iloc[0:1]
+            else:
+                input_data_row = None
+        else:
+            # Failover: Use historical data pattern
+            st.warning("⚠️ Live forecast unavailable. Using historical weather pattern.")
+            data_source_info = f"📊 Historical weather pattern (forecast unavailable)"
+            input_data_row = df_historical[
+                (df_historical['datetime'].dt.hour == selected_hour)
+            ].tail(1)  # Get recent similar hour
     else:
         data_source_info = f"📊 Historical weather data from {selected_date.strftime('%d/%m/%Y')}"
-        input_data_row = df_historical[
+        historical_data = df_historical[
             (df_historical['datetime'].dt.date == selected_date) & 
             (df_historical['datetime'].dt.hour == selected_hour)
-        ].iloc[0:1]
+        ]
+        if not historical_data.empty:
+            input_data_row = historical_data.iloc[0:1]
+        else:
+            # Fallback to similar hour pattern
+            input_data_row = df_historical[
+                df_historical['datetime'].dt.hour == selected_hour
+            ].tail(1)
 
-    # Display data source
-    st.markdown(f'<div class="data-source">📡 Data Source: {data_source_info}</div>', unsafe_allow_html=True)
+
 
     if input_data_row is None or input_data_row.empty:
         st.warning("⚠️ No weather data could be found for the selected date and hour. Please try another time.")
@@ -395,11 +886,11 @@ def main():
         except:
             X_live['is_holiday_mlk'] = False
     
-    # Weather data
-    X_live['temperature_2m'] = input_data_row['temperature_2m'].values[0]
-    X_live['relative_humidity_2m'] = input_data_row['relative_humidity_2m'].values[0]
-    X_live['weathercode'] = input_data_row['weathercode'].values[0]
-    X_live['windspeed_10m'] = input_data_row['windspeed_10m'].values[0]
+    # Weather data - using safe access methods
+    X_live['temperature_2m'] = safe_get_value(input_data_row, 'temperature_2m', 25.0)
+    X_live['relative_humidity_2m'] = safe_get_value(input_data_row, 'relative_humidity_2m', 70.0)
+    X_live['weathercode'] = safe_get_value(input_data_row, 'weathercode', 0)
+    X_live['windspeed_10m'] = safe_get_value(input_data_row, 'windspeed_10m', 5.0)
     
     # Create cyclical features
     X_live['hour_sin'] = np.sin(2 * np.pi * X_live['hour'] / 24)
@@ -415,97 +906,370 @@ def main():
     X_live_processed = preprocessor.transform(X_live)
     prediction_jam = model_jam.predict(X_live_processed)[0]
     prediction_peak = model_peak.predict(X_live_processed)[0]
-    jam_label = 'Jam Likely' if prediction_jam else 'No Jam'
+    
+    # Create labels with emojis
+    jam_label = '🚨 Jam Likely' if prediction_jam else '✅ No Jam'
+    
+    # Add emojis to traffic levels
+    if prediction_peak == "Peak":
+        traffic_label = "🔴 Peak Hour"
+    elif prediction_peak == "Shoulder":
+        traffic_label = "🟡 Shoulder Hour"
+    else:
+        traffic_label = "🟢 Off-Peak Hour"
 
-    # Advisory Header with Malacca Flag Design
+    # Minimalist Advisory Header
     st.markdown(f"""
-    <div class="advisory-header">
-        <h2>🎯 Travel Advisory for Historic Malacca</h2>
-        <h3>{selected_date.strftime('%d/%m/%Y')} at {selected_hour:02d}:00</h3>
+    <div style="
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin: 1.5rem 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.3s ease;
+    ">
+        <div style="
+            display: flex;
+            align-items: center;
+        ">
+            <div>
+                <div style="
+                    font-size: 1.1rem;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-bottom: 0.2rem;
+                ">
+                    {selected_location_name} • Historic Malacca
+                </div>
+                <div style="
+                    font-size: 0.85rem;
+                    color: var(--text-secondary);
+                    opacity: 0.8;
+                ">
+                    Traffic & Weather Conditions
+                </div>
+            </div>
+        </div>
+        <div style="
+            text-align: right;
+            background: rgba(30, 64, 175, 0.1);
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(30, 64, 175, 0.2);
+        ">
+            <div style="
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: var(--malacca-blue);
+                margin-bottom: 0.1rem;
+            ">
+                {selected_date.strftime('%d %b %Y')}
+            </div>
+            <div style="
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: var(--text-primary);
+            ">
+                {selected_hour:02d}:00
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Main prediction cards
+    # Main prediction cards with improved layout
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown("### 🚦 Congestion Risk")
-        jam_class = get_jam_status_style(prediction_jam)
-        st.markdown(f'<div class="{jam_class}">{jam_label}</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        jam_status_color = "#dc2626" if prediction_jam else "#22c55e"
+        jam_bg_color = "rgba(220, 38, 38, 0.1)" if prediction_jam else "rgba(34, 197, 94, 0.1)"
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="display: flex; align-items: center; margin-bottom: 1.5rem; color: var(--text-primary);">
+                <span style="font-size: 1.8rem; margin-right: 0.8rem;">🚦</span>
+                <span>Congestion Risk</span>
+            </h3>
+                         <div style="text-align: center; padding: 1.5rem; background: {jam_bg_color}; border-radius: 12px; border: 2px solid {jam_status_color}; min-height: 80px; display: flex; flex-direction: column; justify-content: center;">
+                 <div style="font-size: 2.5rem; margin-bottom: 0.5rem; line-height: 1;">{"🚨" if prediction_jam else "✅"}</div>
+                 <div style="font-size: 1.1rem; font-weight: 700; color: {jam_status_color}; margin-bottom: 0.3rem;">{"Jam Likely" if prediction_jam else "No Jam"}</div>
+                 <div style="font-size: 1.2rem; font-weight: 600; color: {jam_status_color};">{"High Risk" if prediction_jam else "Clear Roads"}</div>
+             </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown("### 📊 Traffic Level")
-        traffic_class = get_traffic_status_style(prediction_peak)
-        st.markdown(f'<div class="{traffic_class}">{prediction_peak} Hour</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        if prediction_peak == "Peak":
+            traffic_color = "#dc2626"
+            traffic_bg = "rgba(220, 38, 38, 0.1)"
+        elif prediction_peak == "Shoulder":
+            traffic_color = "#f59e0b"
+            traffic_bg = "rgba(245, 158, 11, 0.1)"
+        else:
+            traffic_color = "#22c55e"
+            traffic_bg = "rgba(34, 197, 94, 0.1)"
+            
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3 style="display: flex; align-items: center; margin-bottom: 1.5rem; color: var(--text-primary);">
+                <span style="font-size: 1.8rem; margin-right: 0.8rem;">📊</span>
+                <span>Traffic Level</span>
+            </h3>
+                         <div style="text-align: center; padding: 1.5rem; background: {traffic_bg}; border-radius: 12px; border: 2px solid {traffic_color}; min-height: 80px; display: flex; flex-direction: column; justify-content: center;">
+                 <div style="font-size: 2.5rem; margin-bottom: 0.5rem; line-height: 1;">{"🔴" if prediction_peak == "Peak" else "🟡" if prediction_peak == "Shoulder" else "🟢"}</div>
+                 <div style="font-size: 1.1rem; font-weight: 700; color: {traffic_color}; margin-bottom: 0.3rem;">{prediction_peak} Hour</div>
+                 <div style="font-size: 1.2rem; font-weight: 600; color: {traffic_color};">{"Heavy Traffic" if prediction_peak == "Peak" else "Moderate Flow" if prediction_peak == "Shoulder" else "Light Traffic"}</div>
+             </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.markdown("### 🌤️ Weather Forecast")
-        weather_code_val = input_data_row['weathercode'].values[0]
+        weather_code_val = safe_get_value(input_data_row, 'weathercode', 0)
         weather_icon, weather_desc, weather_color = get_weather_icon_and_desc(weather_code_val)
-        temp = input_data_row['temperature_2m'].values[0]
+        temp = safe_get_value(input_data_row, 'temperature_2m', 25.0)
         
         st.markdown(f"""
-        <div style="display: flex; align-items: center;">
-            <span class="weather-icon">{weather_icon}</span>
-            <div>
-                <div style="font-weight: 600; color: {weather_color};">{weather_desc}</div>
-                <div style="color: #1e40af;">{temp:.1f}°C</div>
+        <div class="metric-card">
+            <h3 style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; color: var(--text-primary);">
+                <div style="display: flex; align-items: center;">
+                    <span style="font-size: 1.8rem; margin-right: 0.8rem;">🌤️</span>
+                    <span>Weather Forecast</span>
+                </div>
+            </h3>
+            <div style="text-align: center; padding: 1.5rem; background: rgba(59, 130, 246, 0.1); border-radius: 12px; border: 2px solid #3b82f6; min-height: 80px; display: flex; flex-direction: column; justify-content: center;">
+                <div style="font-size: 2.5rem; margin-bottom: 0.5rem; line-height: 1;">{weather_icon}</div>
+                <div style="font-weight: 700; color: {weather_color}; font-size: 1.1rem; margin-bottom: 0.3rem;">{weather_desc}</div>
+                <div style="color: #1e40af; font-size: 1.2rem; font-weight: 600;">{temp:.1f}°C</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+    # Info explanation cards (controlled by top-right button)
+    if st.session_state.show_info:
+        st.markdown("""
+        <div style="margin-bottom: 1rem;">
+            <h4 style="color: var(--text-primary); margin-bottom: 1rem;">What do these predictions mean?</h4>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">We analyze traffic patterns and road conditions to give you 6 possible scenarios:</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create cards in a grid layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #fee2e2, #fecaca);
+                border-left: 4px solid #ef4444;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #dc2626; margin-bottom: 0.5rem;">
+                    🔴 Peak Hour + Jam Likely
+                </div>
+                <div style="color: #991b1b; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Avoid if possible!
+                </div>
+                <div style="color: #7f1d1d; font-size: 0.9rem;">
+                    Heavy traffic with complete standstill<br>
+                    Travel time: 2-3x longer than normal
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #fef3c7, #fde68a);
+                border-left: 4px solid #f59e0b;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #d97706; margin-bottom: 0.5rem;">
+                    🟡 Peak Hour + No Jam
+                </div>
+                <div style="color: #b45309; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Plan extra time
+                </div>
+                <div style="color: #92400e; font-size: 0.9rem;">
+                    Heavy but moving traffic<br>
+                    Travel time: 1.5-2x longer than normal
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #fed7aa, #fdba74);
+                border-left: 4px solid #f97316;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #ea580c; margin-bottom: 0.5rem;">
+                    🟠 Shoulder Hour + Jam Likely
+                </div>
+                <div style="color: #c2410c; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Check traffic news
+                </div>
+                <div style="color: #9a3412; font-size: 0.9rem;">
+                    Unexpected incident causing delays<br>
+                    Travel time: 2x longer than normal
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+                border-left: 4px solid #22c55e;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #16a34a; margin-bottom: 0.5rem;">
+                    🟢 Shoulder Hour + No Jam
+                </div>
+                <div style="color: #15803d; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Good to go
+                </div>
+                <div style="color: #166534; font-size: 0.9rem;">
+                    Moderate traffic, manageable delays<br>
+                    Travel time: Slightly longer than normal
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #fee2e2, #fecaca);
+                border-left: 4px solid #ef4444;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #dc2626; margin-bottom: 0.5rem;">
+                    🔴 Off-Peak Hour + Jam Likely
+                </div>
+                <div style="color: #991b1b; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Major incident!
+                </div>
+                <div style="color: #7f1d1d; font-size: 0.9rem;">
+                    Serious emergency or road closure<br>
+                    Travel time: Unpredictable, find alternate route
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+                border-left: 4px solid #10b981;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            ">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #059669; margin-bottom: 0.5rem;">
+                    ✅ Off-Peak Hour + No Jam
+                </div>
+                <div style="color: #047857; font-weight: 600; margin-bottom: 0.3rem;">
+                    → Perfect timing!
+                </div>
+                <div style="color: #065f46; font-size: 0.9rem;">
+                    Clear roads, smooth journey<br>
+                    Travel time: Normal or faster
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            border: 1px solid #3b82f6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            text-align: center;
+        ">
+            <div style="color: #1d4ed8; font-weight: 600;">
+                💡 <strong>Tip:</strong> Green predictions are your best bet for comfortable travel!
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Travel Recommendations
     st.markdown("## 🎯 Travel Recommendations for Malacca")
 
     # Determine recommendations
-    if input_data_row['weathercode'].values[0] >= 61:
-        vehicle_rec = "🚗 A car is recommended for safety due to rain in Malacca's narrow streets."
+    weather_code_for_rec = safe_get_value(input_data_row, 'weathercode', 0)
+    weather_code_for_rec = weather_code_for_rec if weather_code_for_rec is not None else 0
+    if weather_code_for_rec >= 61:
+        vehicle_rec = "A car is recommended for safety due to rain in Malacca's narrow streets."
         vehicle_icon = "🚗"
-        consequence_text = "⚠️ **Risk Warning:** Motorcycle travel during rain can be dangerous on Malacca's historic cobblestone areas."
+        consequence_text = "Risk Warning: Motorcycle travel during rain can be dangerous on Malacca's historic cobblestone areas."
+        consequence_icon = "⚠️"
         risk_class = "risk-warning"
     elif jam_label == "Jam Likely" or prediction_peak == "Peak":
         vehicle_rec = "🏍️ A motorcycle is recommended to navigate through Malacca's busy heritage areas."
         vehicle_icon = "🏍️"
-        consequence_text = "⚠️ **Risk Warning:** Cars may face significant delays in Malacca's narrow heritage streets during peak hours."
+        consequence_text = "Risk Warning: Cars may face significant delays in Malacca's narrow heritage streets during peak hours."
+        consequence_icon = "⚠️"
         risk_class = "risk-warning"
     elif prediction_peak == "Shoulder":
         vehicle_rec = "🚗🏍️ Both vehicles are suitable for exploring Malacca comfortably."
         vehicle_icon = "🚗🏍️"
-        consequence_text = "✅ **Outlook:** Good time to visit Malacca's attractions with moderate traffic."
+        consequence_text = "Outlook: Good time to visit Malacca's attractions with moderate traffic."
+        consequence_icon = "✅"
         risk_class = "risk-good"
     else:
         vehicle_rec = "🚗 Perfect time for a comfortable car journey through historic Malacca."
         vehicle_icon = "🚗"
-        consequence_text = "✅ **Outlook:** Excellent conditions for sightseeing in Malacca's heritage sites."
+        consequence_text = "Outlook: Excellent conditions for sightseeing in Malacca's heritage sites."
+        consequence_icon = "✅"
         risk_class = "risk-good"
 
-    # Display recommendations
+    # Display recommendations with improved UI
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.markdown(f"""
         <div class="recommendation-card">
-            <h4>🚙 Recommended Vehicle for Malacca</h4>
-            <div style="display: flex; align-items: center; margin-top: 1rem;">
-                <span class="vehicle-icon">{vehicle_icon}</span>
-                <div style="font-size: 1.1rem; font-weight: 500;">{vehicle_rec}</div>
+            <h4 style="display: flex; align-items: center; margin-bottom: 1.5rem;">
+                <span style="font-size: 1.8rem; margin-right: 0.8rem;">🚙</span>
+                <span>Recommended Vehicle for Malacca</span>
+            </h4>
+            <div style="display: flex; align-items: center; padding: 1rem; background: rgba(30, 64, 175, 0.1); border-radius: 12px; border-left: 4px solid var(--malacca-blue);">
+                <span style="font-size: 3rem; margin-right: 1.5rem; line-height: 1;">{vehicle_icon}</span>
+                <div style="flex: 1;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary); line-height: 1.4;">{vehicle_rec}</div>
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
-        <div class="{risk_class}">
-            <h4>📋 Travel Outlook & Consequences</h4>
-            <div style="margin-top: 1rem; font-size: 1.1rem;">{consequence_text}</div>
+        <div class="recommendation-card">
+            <h4 style="display: flex; align-items: center; margin-bottom: 1.5rem;">
+                <span style="font-size: 1.8rem; margin-right: 0.8rem;">📋</span>
+                <span>Travel Outlook & Consequences</span>
+            </h4>
+            <div style="display: flex; align-items: center; padding: 1rem; background: rgba(34, 197, 94, 0.1); border-radius: 12px; border-left: 4px solid #22c55e;">
+                <span style="font-size: 3rem; margin-right: 1.5rem; line-height: 1;">{consequence_icon}</span>
+                <div style="flex: 1;">
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary); line-height: 1.4;">{consequence_text}</div>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -516,27 +1280,72 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("🌡️ Temperature", f"{temp:.1f}°C")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="metric-container">
+            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                <span style="font-size: 1.2rem; margin-right: 0.5rem;">🌡️</span>
+                <span style="font-size: 0.9rem; color: var(--text-secondary);">Temperature</span>
+            </div>
+            <div style="font-size: 2rem; font-weight: 600; color: var(--text-primary);">{temp:.1f}°C</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        humidity = input_data_row['relative_humidity_2m'].values[0]
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("💧 Humidity", f"{humidity:.0f}%")
-        st.markdown('</div>', unsafe_allow_html=True)
+        humidity = safe_get_value(input_data_row, 'relative_humidity_2m', 70.0)
+        st.markdown(f"""
+        <div class="metric-container">
+            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                <span style="font-size: 1.2rem; margin-right: 0.5rem;">💧</span>
+                <span style="font-size: 0.9rem; color: var(--text-secondary);">Humidity</span>
+            </div>
+            <div style="font-size: 2rem; font-weight: 600; color: var(--text-primary);">{humidity:.0f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col3:
-        windspeed = input_data_row['windspeed_10m'].values[0]
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("💨 Wind Speed", f"{windspeed:.1f} km/h")
-        st.markdown('</div>', unsafe_allow_html=True)
+        windspeed = safe_get_value(input_data_row, 'windspeed_10m', 5.0)
+        st.markdown(f"""
+        <div class="metric-container">
+            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                <span style="font-size: 1.2rem; margin-right: 0.5rem;">💨</span>
+                <span style="font-size: 0.9rem; color: var(--text-secondary);">Wind Speed</span>
+            </div>
+            <div style="font-size: 2rem; font-weight: 600; color: var(--text-primary);">{windspeed:.1f} km/h</div>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col4:
-        is_weekend_text = "Yes" if X_live['is_weekend'].values[0] else "No"
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("📅 Weekend", is_weekend_text)
-        st.markdown('</div>', unsafe_allow_html=True)
+        is_weekend_text = "Yes" if bool(X_live['is_weekend'].iloc[0]) else "No"
+        st.markdown(f"""
+        <div class="metric-container">
+            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                <span style="font-size: 1.2rem; margin-right: 0.5rem;">📅</span>
+                <span style="font-size: 0.9rem; color: var(--text-secondary);">Weekend</span>
+            </div>
+            <div style="font-size: 2rem; font-weight: 600; color: var(--text-primary);">{is_weekend_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- FORECAST GRAPH (if forecast_df exists) ---
+    if 'forecast_df' in locals() and forecast_df is not None and not forecast_df.empty:
+        st.markdown("---")
+        st.markdown("### 🌡️ Temperature Trend Today")
+        
+        # Convert forecast datetime to hours
+        forecast_df['hour'] = forecast_df['datetime'].dt.strftime('%H:%M')
+        chart_data = forecast_df[['hour', 'temperature_2m']].set_index('hour')
+        
+        st.line_chart(chart_data)
+
+
+    # --- RAIN RADAR EMBED ---
+    st.markdown("---")
+    st.markdown("### 🌧️ Real-Time Rain Radar (Windy.com)")
+    components.iframe(
+        src="https://embed.windy.com/embed2.html?lat=2.2&lon=102.3&detailLat=2.2&detailLon=102.3&width=650&height=450&zoom=9&level=surface&overlay=rain&menu=&message=true",
+        height=RADAR_HEIGHT,
+        scrolling=True
+    )
 
     # Refresh button
     st.markdown("---")
@@ -546,14 +1355,8 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    # Footer with Malacca theme
-    st.markdown("""
-    <div class="footer">
-        <h4 style="color: #1e40af; margin-bottom: 1rem;">🏛️ MelakaGo - Smart Travel Advisory</h4>
-        <p style="color: #dc2626; font-weight: 500;">Navigating Historic Malacca with Intelligence 🚗🏍️</p>
-        <p style="color: #1e40af; font-size: 0.9rem;">Powered by AI • Inspired by Malacca's Heritage</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Close main content container
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
