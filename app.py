@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import requests
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 import time
 import json
 import base64
@@ -28,6 +28,12 @@ def get_image_base64(image_path):
             return base64.b64encode(img_file.read()).decode()
     except FileNotFoundError:
         return None
+
+# Function to get Malaysia time (UTC+8)
+def get_malaysia_time():
+    """Get current time in Malaysia timezone (UTC+8)"""
+    malaysia_tz = timezone(timedelta(hours=8))
+    return datetime.now(malaysia_tz)
 
 
 # --- PAGE CONFIG ---
@@ -433,7 +439,7 @@ def display_animated_background():
 
 def display_analog_clock():
     """Display analog clock emoji showing current time visually."""
-    now = datetime.now()
+    now = get_malaysia_time()
     current_date = now.strftime("%d %B")
     
     # Create a simple clock emoji representation based on hour
@@ -743,7 +749,7 @@ def main():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # Get current hour for default value
-    current_hour = datetime.now().hour
+    current_hour = get_malaysia_time().hour
 
     # Sidebar for inputs
     with st.sidebar:
